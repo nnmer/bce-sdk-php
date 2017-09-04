@@ -70,7 +70,7 @@ class VodClient extends BceBaseClient
      */
     public function applyMedia($options = array())
     {
-        list($config) = $this->parseOptions($options, 'config');
+        list($config, $priority) = $this->parseOptions($options, 'config', 'priority');
 
         $params = array(
             'apply' => null,
@@ -105,8 +105,15 @@ class VodClient extends BceBaseClient
      */
     public function processMedia($mediaId, $title, $description, $options = array())
     {
-        list($config, $extension, $presetGroup) =
-            $this->parseOptions($options, 'config', 'sourceExtension', 'transcodingPresetGroupName');
+        list($config, $extension, $presetGroup, $priority) =
+            $this->parseOptions($options,
+                'config',
+                'sourceExtension',
+                'transcodingPresetGroupName',
+                'priority');
+        if (is_null($priority)) {
+            $priority = 0;
+        }
         $params = array(
             'process' => null,
         );
@@ -115,6 +122,7 @@ class VodClient extends BceBaseClient
             'description' => $description,
             'sourceExtension' => $extension,
             'transcodingPresetGroupName' => $presetGroup,
+            'priority' => $priority
         );
 
         return $this->sendRequest(
@@ -144,12 +152,13 @@ class VodClient extends BceBaseClient
      */
     public function rerunMedia($mediaId, $options = array())
     {
-        list($config) = $this->parseOptions($options, 'config');
-
+        list($config, $presetGroup, $priority) =
+            $this->parseOptions($options, 'config', 'presetGroup', 'priority');
         $params = array(
             'rerun' => null,
+            'presetGroup' => $presetGroup,
+            'priority' => $priority
         );
-
         return $this->sendRequest(
             HttpMethod::PUT,
             array(
@@ -234,7 +243,8 @@ class VodClient extends BceBaseClient
         if (!preg_match("/^[a-z0-9]{0,10}$/", $extension)) {
             $extension = '';
         }
-        $options['extension'] = $extension;
+        $options['sourceExtension'] = $extension;
+
         return $this->processMedia($uploadInfo->mediaId, $title, $description, $options);
     }
 
@@ -275,7 +285,7 @@ class VodClient extends BceBaseClient
         if (!preg_match("/^[a-z0-9]{0,10}$/", $extension)) {
             $extension = '';
         }
-        $options['extension'] = $extension;
+        $options['sourceExtension'] = $extension;
         return $this->processMedia($uploadInfo->mediaId, $title, $description, $options);
     }
 

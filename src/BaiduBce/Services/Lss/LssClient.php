@@ -2510,6 +2510,37 @@ class LssClient extends BceBaseClient
     }
 
     /**
+     * Get a security policy of LSS 3.0.
+     *
+     * @param $name string, security policy name
+     * @param array $options Supported options:
+     *      {
+     *          config: the optional bce configuration, which will overwrite the
+     *                  default client configuration that was passed in constructor.
+     *      }
+     * @return mixed security policy detail
+     * @throws BceClientException
+     */
+    public function querySecurityPolicy($name, $options = array())
+    {
+        list($config) = $this->parseOptions($options, 'config');
+
+        if (empty($name)) {
+            throw new BceClientException("The parameter name "
+                . "should NOT be null or empty string");
+        }
+        $this->prefix = '/v6';
+
+        return $this->sendRequest(
+            HttpMethod::GET,
+            array(
+                'config' => $config,
+            ),
+            "/securitypolicy/$name"
+        );
+    }
+
+    /**
      * Create HttpClient and send request
      * @param string $httpMethod The Http request method
      * @param array $varArgs The extra arguments

@@ -333,6 +333,70 @@ class BosClient extends BceBaseClient
         );
     }
 
+   public function putBucketReplication($bucketName, $replicationRule, $options = array())
+    {
+        list($config) = $this->parseOptions($options, BosOptions::CONFIG);
+
+        return $this->sendRequest(
+            HttpMethod::PUT,
+            array(
+                BosOptions::CONFIG => $config,
+                'bucket_name' => $bucketName,
+                'body' => json_encode($replicationRule),
+                'params' => array(
+                    BosOptions::REPLICATION => '',
+                )
+            )
+        );
+    }
+    public function getBucketReplication($bucketName, $options = array())
+    {
+        list($config) = $this->parseOptions($options, BosOptions::CONFIG);
+
+        return $this->sendRequest(
+            HttpMethod::GET,
+            array(
+                BosOptions::CONFIG => $config,
+                'bucket_name' => $bucketName,
+                'params' => array(
+                    BosOptions::REPLICATION => '',
+                )
+            )
+        );
+    }
+    public function getBucketReplicationProgress($bucketName, $options = array())
+    {
+        list($config) = $this->parseOptions($options, BosOptions::CONFIG);
+
+        return $this->sendRequest(
+            HttpMethod::GET,
+            array(
+                BosOptions::CONFIG => $config,
+                'bucket_name' => $bucketName,
+                'params' => array(
+                    BosOptions::REPLICATION_PROGRESS => '',
+                )
+            )
+        );
+    }
+
+    public function deleteBucketReplication($bucketName, $options = array())
+    {
+        list($config) = $this->parseOptions($options, BosOptions::CONFIG);
+
+        return $this->sendRequest(
+            HttpMethod::DELETE,
+            array(
+                BosOptions::CONFIG => $config,
+                'bucket_name' => $bucketName,
+                'params' => array(
+                    BosOptions::REPLICATION => '',
+                )
+            )
+        );
+    }
+
+
     /**
      * Get Access Control Level of bucket
      *
@@ -532,6 +596,103 @@ class BosClient extends BceBaseClient
             )
         );
     }
+    public function appendObjectFromString(
+        $bucketName,
+        $key,
+        $data,
+        $offset,
+        $options = array()
+    ) {
+        if (empty($key)) {
+            throw new \InvalidArgumentException('$key should not be empty or null.');
+        }
+        if (!is_int($offset) && !is_long($offset)) {
+            throw new \InvalidArgumentException(
+                '$offset should be int or long.'
+            );
+        }
+        $contentLength = strlen($data);
+        $contentMd5 = base64_encode(md5($data, true));
+
+        $this->checkData($data);
+
+        $headers = array();
+        $headers[HttpHeaders::CONTENT_MD5] = $contentMd5;
+        $headers[HttpHeaders::CONTENT_LENGTH] = $contentLength;
+        $this->populateRequestHeadersWithOptions($headers, $options);
+        list($config) = $this->parseOptions($options, BosOptions::CONFIG);
+
+        $param = array();
+        if ($offset !== 0) {
+            $param['offset'] = $offset;
+        }
+        $param['append'] = '';
+        $response = $this->sendRequest(
+            HttpMethod::POST,
+            array(
+                BosOptions::CONFIG => $config,
+                'bucket_name' => $bucketName,
+                'key' => $key,
+                'body' => $data,
+                'headers' => $headers,
+                'params' => $param,
+            )
+        );
+        return $response->metadata[BosOptions::NEXT_APPEND_OFFSET];
+    }
+
+    public function appendObjectFromFile(
+        $bucketName,
+        $key,
+        $filename,
+        $offset,
+        $options = array()
+    ) {
+
+        $contentLength = filesize($filename);
+
+        $fp = fopen($filename, 'rb');
+        $contentMd5 = base64_encode(HashUtils::md5FromStream($fp, 0, $contentLength));
+
+        $headers = array();
+        $headers[HttpHeaders::CONTENT_MD5] = $contentMd5;
+        $headers[HttpHeaders::CONTENT_LENGTH] = $contentLength;
+        $this->populateRequestHeadersWithOptions($headers, $options);
+        list($config) = $this->parseOptions($options, BosOptions::CONFIG);
+
+        $param = array();
+        if ($offset !== 0) {
+            $param['offset'] = $offset;
+        }
+        $param['append'] = '';
+
+        try {
+            $this->checkData($fp);
+            $response = $this->sendRequest(
+                HttpMethod::POST,
+                array(
+                    BosOptions::CONFIG => $config,
+                    'bucket_name' => $bucketName,
+                    'key' => $key,
+                    'body' => $fp,
+                    'headers' => $headers,
+                    'params' => $param,
+                )
+            );
+            if (is_resource($fp)) {
+                fclose($fp);
+            }
+            return $response->metadata[BosOptions::NEXT_APPEND_OFFSET];
+
+        } catch (\Exception $e) {
+            if (is_resource($fp)) {
+                fclose($fp);
+            }
+            throw $e;
+        }
+    }
+
+
 
     /**
      * Get the object from a bucket.
@@ -749,7 +910,7 @@ class BosClient extends BceBaseClient
                 '$sourceKey should not be empty or null.'
             );
         }
-        if (empty($targetBucketName)) {
+        if (!isset($this->config[BceClientConfigOptions::CUSTOM]) && empty($targetBucketName)) {
             throw new \InvalidArgumentException(
                 '$targetBucketName should not be empty or null.'
             );
@@ -760,12 +921,13 @@ class BosClient extends BceBaseClient
             );
         }
 
-        list($config, $userMetadata, $etag, $storageClass) = $this->parseOptions(
+        list($config, $userMetadata, $etag, $storageClass, $keepTime) = $this->parseOptions(
             $options,
             BosOptions::CONFIG,
             BosOptions::USER_METADATA,
             BosOptions::ETAG,
-            BosOptions::STORAGE_CLASS
+            BosOptions::STORAGE_CLASS,
+            HttpHeaders::BCE_KEEP_TIME
         );
 
         $headers = array();
@@ -789,8 +951,9 @@ class BosClient extends BceBaseClient
         }
         if ($storageClass !== null) {
             $headers[HttpHeaders::BCE_STORAGE_CLASS] = $storageClass;
-        } else {
-            $headers[HttpHeaders::BCE_STORAGE_CLASS] = StorageClass::STANDARD;
+        }
+        if ($keepTime !== null) {
+            $headers[HttpHeaders::BCE_KEEP_TIME] = $headers[HttpHeaders::BCE_COPY_SOURCE];
         }
 
         return $this->sendRequest(
@@ -819,18 +982,51 @@ class BosClient extends BceBaseClient
         $key,
         $options = array()
     ) {
-        list($config, $storageClass) = $this->parseOptions(
+        list($config, 
+            $storageClass,
+            $contentDisposition,
+            $contentEncoding,
+            $contentType,
+            $cacheControl,
+            $expires,
+            $copySourceBucket,
+            $copySourceObject) = $this->parseOptions(
             $options, 
             BosOptions::CONFIG,
-            BosOptions::STORAGE_CLASS);
+            BosOptions::STORAGE_CLASS,
+            HttpHeaders::CONTENT_DISPOSITION,
+            HttpHeaders::CONTENT_ENCODING,
+            HttpHeaders::CONTENT_TYPE,
+            HttpHeaders::CACHE_CONTROL,
+            HttpHeaders::EXPIRES,
+            BosOptions::COPY_SOURCE_BUCKET,
+            BosOptions::COPY_SOURCE_OBJECT);
 
-        $headers = array(
-            HttpHeaders::CONTENT_TYPE => HttpContentTypes::OCTET_STREAM,
-        );
+        $headers = array();
         if ($storageClass !== null) {
             $headers[HttpHeaders::BCE_STORAGE_CLASS] = $storageClass;
+        }
+        if ($contentDisposition != null) {
+            $headers[HttpHeaders::CONTENT_DISPOSITION] = $contentDisposition;
+        }
+        if ($contentEncoding != null) {
+            $headers[HttpHeaders::CONTENT_ENCODING] = $contentEncoding;
+        }
+        if ($contentType != null) {
+            $headers[HttpHeaders::CONTENT_TYPE] = $contentType;
         } else {
-            $headers[HttpHeaders::BCE_STORAGE_CLASS] = StorageClass::STANDARD;
+            $headers[HttpHeaders::CONTENT_TYPE] = HttpContentTypes::OCTET_STREAM;
+        }
+        if ($cacheControl != null) {
+            $headers[HttpHeaders::CACHE_CONTROL] = $cacheControl;
+        }
+        if ($expires != null) {
+            $headers[HttpHeaders::EXPIRES] = $expires;
+        }
+        if ($copySourceBucket != null && $copySourceObject != null) {
+            $headers[HttpHeaders::BCE_KEEP_TIME] =
+                HttpUtils::urlEncodeExceptSlash(
+                    sprintf("/%s/%s", $copySourceBucket, $copySourceObject));
         }
 
         return $this->sendRequest(
@@ -874,6 +1070,135 @@ class BosClient extends BceBaseClient
             )
         );
     }
+    /**
+     * upload a part by copy from another object from bos
+     *
+     * @param string $sourceBucketName  
+     * @param string $sourceKey source object
+     * @param string $targetBucketName
+     * @param string $targetKey target object
+     * @param string $uploadId The uploadId returned by initiateMultipartUpload.
+     * @param int $partNumber The part index, 1-based.
+     * @param mixed $options The optional bce configuration, which will overwrite the
+     *   default configuration that was passed while creating BosClient instance.
+     *
+     * @return mixed
+     */
+    public function uploadPartCopy(
+        $sourceBucketName,
+        $sourceKey,
+        $targetBucketName,
+        $targetKey,
+        $uploadId,
+        $partNumber,
+        $options = array()
+    ) {
+    
+        if (empty($sourceBucketName)) {
+            throw new \InvalidArgumentException(
+                '$sourceBucketName should not be empty or null.'
+            );
+        }
+        if (empty($sourceKey)) {
+            throw new \InvalidArgumentException(
+                '$sourceKey should not be empty or null.'
+            );
+        }
+        if (empty($targetBucketName)) {
+            throw new \InvalidArgumentException(
+                '$targetBucketName should not be empty or null.'
+            );
+        }
+        if (empty($targetKey)) {
+            throw new \InvalidArgumentException(
+                '$targetKey should not be empty or null.'
+            );
+        }
+        if ($partNumber < BosClient::MIN_PART_NUMBER
+            || $partNumber > BosClient::MAX_PART_NUMBER
+        ) {
+            throw new \InvalidArgumentException(
+                sprintf(
+                    'Invalid $partNumber %d. The valid range is from %d to %d.',
+                    $partNumber,
+                    BosClient::MIN_PART_NUMBER,
+                    BosClient::MAX_PART_NUMBER
+                )
+            );
+        }
+
+        list($config,$etag,$unEtag,$unModified,$modified,$range) = $this->parseOptions(
+            $options,
+            BosOptions::CONFIG,
+            BosOptions::OBJECT_COPY_SOURCE_IF_MATCH_TAG,
+            BosOptions::OBJECT_COPY_SOURCE_IF_NONE_MATCH_TAG,
+            BosOptions::OBJECT_COPY_SOURCE_IF_UNMODIFIED_SINCE,
+            BosOptions::OBJECT_COPY_SOURCE_IF_MODIFIED_SINCE,
+            BosOptions::RANGE
+        );
+
+        $headers = array();
+
+        $headers[HttpHeaders::BCE_COPY_SOURCE] =
+            HttpUtils::urlEncodeExceptSlash(
+                sprintf("/%s/%s", $sourceBucketName, $sourceKey)
+            );
+        if ($etag != null) {
+            $etag = trim($etag, '"');
+            $headers[HttpHeaders::BCE_COPY_SOURCE_IF_MATCH] = '"' . $etag . '"';
+        }
+        if ($unEtag != null) {
+            $unEtag = trim($unEtag,'"');
+            $headers[HttpHeaders::BCE_COPY_SOURCE_IF_NONE_MATCH] = '"' . $unEtag . '"';
+        }
+        if ($unModified != null) {
+            $headers[HttpHeaders::BCE_COPY_SOURCE_IF_UNMODIFIED_SINCE]
+                = $unModified;
+        }
+        if ($modified != null) {
+            $headers[HttpHeaders::BCE_COPY_SOURCE_IF_MODIFIED_SINCE]
+                = $modified;
+        }
+        if ($range !== null) {
+            switch(gettype($range)) {
+                case 'array':
+                    if (!isset($range[0]) || !(is_int($range[0]) || is_long($range[0]))) {
+                        throw new \InvalidArgumentException(
+                            'range[0] is not defined.'
+                        );
+                    }
+                    if (!isset($range[1]) || !(is_int($range[1]) || is_long($range[1]))) {
+                        throw new \InvalidArgumentException(
+                            'range[1] is not defined.'
+                        );
+                    }
+                    $range = sprintf('%d-%d', $range[0], $range[1]);
+                    break;
+                case 'string':
+                    break;
+                default:
+                    throw new \InvalidArgumentException(
+                        'Option "range" should be either an array of two '
+                        . 'integers or a string'
+                    );
+            }
+            $headers[HttpHeaders::BCE_COPY_RANGE] = sprintf('bytes=%s', $range);
+        }
+
+        return $this->sendRequest(
+            HttpMethod::PUT,
+            array(
+                BosOptions::CONFIG => $config,
+                'bucket_name' => $targetBucketName,
+                'key' => $targetKey,
+                'params' => array(
+                    'partNumber' => $partNumber,
+                    'uploadId' => $uploadId,
+                ),
+                'headers' => $headers,
+            )
+        );
+    }
 
     /**
      * Upload a part from a file handle
@@ -900,7 +1225,7 @@ class BosClient extends BceBaseClient
         $data,
         $options = array()
     ) {
-        if (empty($bucketName)) {
+        if (!isset($this->config[BceClientConfigOptions::CUSTOM]) && empty($bucketName)) {
             throw new \InvalidArgumentException(
                 '$bucketName should not be empty or null.'
             );
@@ -1040,7 +1365,7 @@ class BosClient extends BceBaseClient
      */
     public function listParts($bucketName, $key, $uploadId, $options = array())
     {
-        if (empty($bucketName)) {
+        if (!isset($this->config[BceClientConfigOptions::CUSTOM]) && empty($bucketName)) {
             throw new \InvalidArgumentException(
                 '$bucketName should not be empty or null.'
             );
@@ -1105,7 +1430,7 @@ class BosClient extends BceBaseClient
         array $partList,
         $options = array()
     ) {
-        if (empty($bucketName)) {
+        if (!isset($this->config[BceClientConfigOptions::CUSTOM]) && empty($bucketName)) {
             throw new \InvalidArgumentException(
                 '$bucketName should not be empty or null.'
             );
@@ -1232,6 +1557,7 @@ class BosClient extends BceBaseClient
         }
 
         $path = $this->getPath($args['bucket_name'], $args['key']);
+
         $response = $this->httpClient->sendRequest(
             $config,
             $httpMethod,
@@ -1273,6 +1599,10 @@ class BosClient extends BceBaseClient
      */
     private function getPath($bucketName = null, $key = null)
     {
+        if (isset($this->config[BceClientConfigOptions::CUSTOM])) {
+          $bucketName = null;
+        }
+
         return HttpUtils::appendUri(self::BOS_URL_PREFIX, $bucketName, $key);
     }
 
@@ -1307,8 +1637,6 @@ class BosClient extends BceBaseClient
         if ($storageClass !== null) {
             $headers[HttpHeaders::BCE_STORAGE_CLASS] = $storageClass;
             unset($options[BosOptions::STORAGE_CLASS]);
-        } else {
-            $headers[HttpHeaders::BCE_STORAGE_CLASS] = StorageClass::STANDARD;
         }
         if ($userMetadata !== null) {
             $this->populateRequestHeadersWithUserMetadata($headers, $userMetadata);
