@@ -149,8 +149,15 @@ class MediaClient extends BceBaseClient
      * Create a merge job
      * @param string $pipelineName The pipeline name
      * @param array $clips
-     *      {
-     *          sourceKey: The source media object's key
+     *     {
+     *          clips:[
+     *          {
+     *              sourceKey: The source media object's key
+     *          },
+     *          {
+     *              sourceKey: The source media object's key
+     *          }
+     *          ]
      *      }
      * @param array $target
      *      {
@@ -194,7 +201,7 @@ class MediaClient extends BceBaseClient
                 'config' => $config,
                 'body' => json_encode(array(
                     'pipelineName' => $pipelineName,
-                    'source' => json_encode(array('clips' => $clips)),
+                    'source' => $clips,
                     'target' => $target,
                 )),
             ),
