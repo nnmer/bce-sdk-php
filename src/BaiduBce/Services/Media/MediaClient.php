@@ -146,6 +146,63 @@ class MediaClient extends BceBaseClient
     }
 
     /**
+     * Create a merge job
+     * @param string $pipelineName The pipeline name
+     * @param array $clips
+     *      {
+     *          sourceKey: The source media object's key
+     *      }
+     * @param array $target
+     *      {
+     *          targetKey: The target media object's key
+     *          presetName: Name of the preset used in the job
+     *      }
+     * @param array $options Supported options:
+     *      {
+     *          config: The optional bce configuration, which will overwrite the
+     *                  default client configuration that was passed in constructor.
+     *      }
+     * @return mixed
+     * @throws BceClientException
+     */
+    public function createMergeJob(
+        $pipelineName,
+        array $clips,
+        array $target,
+        $options = array()
+    ) {
+        list($config) = $this->parseOptions($options, 'config');
+
+        if (empty($pipelineName)) {
+            throw new BceClientException("The parameter pipelineName " 
+                ."should NOT be null or empty string");
+        }
+
+        if (empty($clips)) {
+            throw new BceClientException("The parameter clips " 
+                ."should NOT be null or empty string");
+        }
+
+        if (empty($target)) {
+            throw new BceClientException("The parameter target " 
+                ."should NOT be null or empty string");
+        }
+
+        return $this->sendRequest(
+            HttpMethod::POST,
+            array(
+                'config' => $config,
+                'body' => json_encode(array(
+                    'pipelineName' => $pipelineName,
+                    'source' => json_encode(array('clips' => $clips)),
+                    'target' => $target,
+                )),
+            ),
+            '/job'
+        );
+    }
+
+    /**
      * Create a job
      * @param string $pipelineName The pipeline name
      * @param array $source
