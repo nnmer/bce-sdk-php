@@ -329,6 +329,81 @@ class MediaClient extends BceBaseClient
         );
     }
 
+
+
+    /**
+     * Get the list of notifications
+     *
+     * @return mixed | \stdClass   the request result
+     * @throws BceClientException
+     */
+    public function listNotifications()
+    {
+        return $this->sendRequest(
+            HttpMethod::GET,
+            array(
+            ),
+            '/notification'
+        );
+    }
+
+    /**
+     * Get specific notifications details
+     *
+     * @return mixed | \stdClass   the request result
+     * @throws BceClientException
+     */
+    public function getNotification($notificationId)
+    {
+        return $this->sendRequest(
+            HttpMethod::GET,
+            array(
+            ),
+            '/notification/'.$notificationId
+        );
+    }
+
+    /**
+     *
+     * Create new notification
+     *
+     * @param $id
+     * @param $notifyUrl
+     *
+     * @return mixed | \stdClass   the request result
+     * @throws BceClientException
+     */
+    public function createNotification($id, $notifyUrl)
+    {
+        return $this->sendRequest(
+            HttpMethod::POST,
+            array(
+                'body' => json_encode([
+                    'name'      => $id,
+                    'endpoint'  => $notifyUrl
+                ]),
+            ),
+            '/notification'
+        );
+    }
+
+    /**
+     * Delete specific notifications
+     *
+     * @return mixed | \stdClass   the request result
+     * @throws BceClientException
+     */
+    public function deleteNotification($notificationId)
+    {
+        return $this->sendRequest(
+            HttpMethod::DELETE,
+            array(
+            ),
+            '/notification/'.$notificationId
+        );
+    }
+
+
     /**
      * List all pipelines' information
      *
